@@ -70,8 +70,11 @@ class ToDoApp:
                 for item in selected_items:
                     item_data = treeview.item(item, "values")
                     if item_data:
-                        self.delete_from_todo_db(section, item_data[0], item_data[1], item_data[2])
-                        self.insert_into_operations_db("remove_item", item_data[0], item_data[1], item_data[2])
+                        if section == "alarm":
+                            self.delete_from_todo_db(section, item_data[0], item_data[1], item_data[2])
+                        else:
+                            self.delete_from_todo_db(section, item_data[0], item_data[1], item_data[2])
+                            self.insert_into_operations_db("remove_item", item_data[0], item_data[1], item_data[2])
                     else:
                         messagebox.showerror("Error", "Invalid item data")
 
@@ -243,18 +246,11 @@ class ToDoApp:
             treeview.heading("time", text="Time", anchor=tk.W)
             self.treeviews[section] = treeview
 
-        # Frame for the alarm section
-        self.alarm_frame = tk.Frame(self.root)
-        self.alarm_frame.grid(row=2, column=5, rowspan=len(self.sections) * 2, padx=10, sticky="nsew")
-
-        # Label for alarm section
-        self.alarm_label = tk.Label(self.alarm_frame, text="Alarms", font=("Helvetica", 14), pady=10)
-        self.alarm_label.grid(row=0, column=0, sticky="w")
-
-        # Alarm Treeview
-        self.alarm_treeview = ttk.Treeview(self.alarm_frame, height=5)
-        self.alarm_treeview.grid(row=1, column=0, sticky="nsew")
-
+        # Create the Treeview for the Alarms section
+        # Create the Treeview for the Alarms section
+        self.alarm_treeview = ttk.Treeview(self.root, height=5)
+        self.treeviews['alarm'] = self.alarm_treeview
+        self.alarm_treeview.grid(row=2, column=5, rowspan=len(self.sections) * 2, padx=10, sticky="nsew")
         self.alarm_treeview["columns"] = ("name", "date", "time")
         self.alarm_treeview.column("#0", width=0, stretch=tk.NO)
         self.alarm_treeview.column("name", anchor=tk.W, width=100)
