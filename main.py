@@ -15,10 +15,13 @@ class ToDoApp:
         self.root.title("CRM Manager")
         self.root.geometry("1200x550")
 
-        # Create the SQLite database
-        self.conn = sqlite3.connect('todo.db')
-        self.cursor = self.conn.cursor()
-        self.create_db()
+        # Create the SQLite databases
+        self.todo_conn = sqlite3.connect('todo.db')
+        self.operations_conn = sqlite3.connect('operations.db')
+        self.todo_cursor = self.todo_conn.cursor()
+        self.operations_cursor = self.operations_conn.cursor()
+        self.create_todo_db()
+        self.create_operations_db()
 
         # Create the input fields and buttons
         self.create_widgets()
@@ -26,15 +29,20 @@ class ToDoApp:
         # Start the reminder
         self.remind()
 
-    def create_db(self):
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS todo
-                            (section TEXT, name TEXT, date TEXT, time TEXT, alarm INTEGER)''')
+    def create_todo_db(self):
+        self.todo_cursor.execute('''CREATE TABLE IF NOT EXISTS todo
+                            (section TEXT, name TEXT, date TEXT, time TEXT, alarm INTEGER, timestamp TEXT)''')
+
+    def create_operations_db(self):
+        self.operations_cursor.execute('''CREATE TABLE IF NOT EXISTS operations
+                                (operation TEXT, timestamp TEXT, name TEXT, date TEXT, time TEXT)''')
 
     def add_item(self):
         name = self.name_entry.get()
         date = self.date_entry.get()
         time = self.time_entry.get()
         alarm = self.alarm_var.get()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if name and date and time:
             if alarm:
@@ -42,7 +50,8 @@ class ToDoApp:
             else:
                 section = self.section_var.get()
 
-            self.insert_into_db(section, name, date, time, alarm)
+            self.insert_into_todo_db(section, name, date, time, alarm, timestamp)
+            self.insert_into_operations_db("add_item", name, date, time)
             self.update_all_lists()
         else:
             messagebox.showerror("Error", "Please fill all fields")
@@ -62,11 +71,11 @@ class ToDoApp:
         for item in selected_items:
             item_data = self.alarm_treeview.item(item, "values")
             if item_data:
-                self.delete_from_db('alarm', item_data[0], item_data[1], item_data[2])
+                self.delete_from_todo_db('alarm', item_data[0], item_data[1], item_data[2])
             else:
                 messagebox.showerror("Error", "Invalid item data")
 
-        # Update the treeviews after removing items
+        self.insert_into_operations_db("remove_item", item_data[0], item_data[1], item_data[2])
         self.update_all_lists()
 
     def move_item_up(self):
@@ -76,7 +85,8 @@ class ToDoApp:
             if selected_items:  # if there are selected items
                 item_data = treeview.item(selected_items[0], "values")
                 if idx > 0:  # if it's not the first treeview
-                    self.update_db_section(item_data[0], item_data[1], item_data[2], self.sections[idx - 1])
+                    self.update_todo_db_section(item_data[0], item_data[1], item_data[2], self.sections[idx - 1])
+                    self.insert_into_operations_db("move_item_up", item_data[0], item_data[1], item_data[2])
                 break  # we found our selected item, no need to continue the loop
         self.update_all_lists()
 
@@ -87,30 +97,40 @@ class ToDoApp:
             if selected_items:  # if there are selected items
                 item_data = treeview.item(selected_items[0], "values")
                 if idx < len(treeviews) - 1:  # if it's not the last treeview
-                    self.update_db_section(item_data[0], item_data[1], item_data[2], self.sections[idx + 1])
+                    self.update_todo_db_section(item_data[0], item_data[1], item_data[2], self.sections[idx + 1])
+                    self.insert_into_operations_db("move_item_down", item_data[0], item_data[1], item_data[2])
                 break  # we found our selected item, no need to continue the loop
         self.update_all_lists()
 
-    def update_db_section(self, name, date, time, new_section):
-        self.cursor.execute("UPDATE todo SET section = ? WHERE name=? AND date=? AND time=?", (new_section, name, date, time))
-        self.conn.commit()
+    def update_todo_db_section(self, name, date, time, new_section):
+        self.todo_cursor.execute("UPDATE todo SET section = ? WHERE name=? AND date=? AND time=?",
+                                 (new_section, name, date, time))
+        self.todo_conn.commit()
 
-    def delete_from_db(self, section, name, date, time):
-        print(f"Deleting {section}, {name}, {date}, {time} from database")  # add this
-        self.cursor.execute("DELETE FROM todo WHERE section=? AND name=? AND date=? AND time=?", (section, name, date, time))
-        self.conn.commit()
+    def delete_from_todo_db(self, section, name, date, time):
+        print(f"Deleting {section}, {name}, {date}, {time} from todo database")  # add this
+        self.todo_cursor.execute("DELETE FROM todo WHERE section=? AND name=? AND date=? AND time=?",
+                                 (section, name, date, time))
+        self.todo_conn.commit()
 
-    def insert_into_db(self, section, name, date, time, alarm):
-        self.cursor.execute("INSERT INTO todo VALUES (?, ?, ?, ?, ?)", (section, name, date, time, alarm))
-        self.conn.commit()
+    def insert_into_todo_db(self, section, name, date, time, alarm, timestamp):
+        self.todo_cursor.execute("INSERT INTO todo VALUES (?, ?, ?, ?, ?, ?)",
+                                 (section, name, date, time, alarm, timestamp))
+        self.todo_conn.commit()
+
+    def insert_into_operations_db(self, operation, name=None, date=None, time=None):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.operations_cursor.execute("INSERT INTO operations VALUES (?, ?, ?, ?, ?)",
+                                       (operation, timestamp, name, date, time))
+        self.operations_conn.commit()
 
     def get_all_items(self):
-        self.cursor.execute("SELECT section, name, date, time, alarm FROM todo")
-        return self.cursor.fetchall()
+        self.todo_cursor.execute("SELECT section, name, date, time, alarm, timestamp FROM todo")
+        return self.todo_cursor.fetchall()
 
     def get_all_items_from_section(self, section):
-        self.cursor.execute("SELECT name, date, time FROM todo WHERE section=?", (section,))
-        return self.cursor.fetchall()
+        self.todo_cursor.execute("SELECT name, date, time FROM todo WHERE section=?", (section,))
+        return self.todo_cursor.fetchall()
 
     def update_all_lists(self):
         for section in self.sections:
@@ -136,7 +156,7 @@ class ToDoApp:
         engine = pyttsx3.init()
         items = self.get_all_items()
         for item in items:
-            section, name, date, task_time, alarm = item
+            section, name, date, task_time, alarm, timestamp = item
             current_date = datetime.now().strftime("%m/%d/%Y")
             current_time = datetime.now().strftime("%H:%M")
 
