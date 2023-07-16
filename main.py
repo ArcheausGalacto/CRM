@@ -59,24 +59,27 @@ class ToDoApp:
     def remove_item(self):
         # Check if any item is selected
         any_item_selected = False
-        selected_items = self.alarm_treeview.selection()
-        if selected_items:
-            any_item_selected = True
+
+        for section in self.sections + ["alarm"]:
+            treeview = self.treeviews[section]
+            selected_items = treeview.selection()
+            if selected_items:
+                any_item_selected = True
+
+                # Remove selected items from the specific section
+                for item in selected_items:
+                    item_data = treeview.item(item, "values")
+                    if item_data:
+                        self.delete_from_todo_db(section, item_data[0], item_data[1], item_data[2])
+                        self.insert_into_operations_db("remove_item", item_data[0], item_data[1], item_data[2])
+                    else:
+                        messagebox.showerror("Error", "Invalid item data")
+
+                self.update_all_lists()
+                break
 
         if not any_item_selected:
             messagebox.showerror("Error", "No item selected")
-            return
-
-        # Remove selected items from the alarm section
-        for item in selected_items:
-            item_data = self.alarm_treeview.item(item, "values")
-            if item_data:
-                self.delete_from_todo_db('alarm', item_data[0], item_data[1], item_data[2])
-            else:
-                messagebox.showerror("Error", "Invalid item data")
-
-        self.insert_into_operations_db("remove_item", item_data[0], item_data[1], item_data[2])
-        self.update_all_lists()
 
     def move_item_up(self):
         treeviews = [self.treeviews[section] for section in self.sections]
