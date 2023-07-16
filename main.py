@@ -3,11 +3,9 @@ from tkinter import ttk
 from tkinter import messagebox
 import sqlite3
 from datetime import datetime
+import threading
 import time
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pyttsx3
-
 
 class ToDoApp:
     def __init__(self, root):
@@ -26,8 +24,38 @@ class ToDoApp:
         # Create the input fields and buttons
         self.create_widgets()
 
-        # Start the reminder
-        self.remind()
+        # Start alarm checking thread
+        self.alarm_thread = threading.Thread(target=self.check_alarm)
+        self.alarm_thread.daemon = True
+        self.alarm_thread.start()
+
+    def check_alarm(self):
+        while True:
+            now = datetime.now()
+            current_time = now.strftime("%H:%M")
+            current_date = now.strftime("%m/%d/%Y")
+
+            print(f"Checking alarms for {current_date} {current_time}")  # debug print
+
+            # Create a new connection for the current thread
+            conn = sqlite3.connect('todo.db')
+            todo_cursor = conn.cursor()
+
+            todo_cursor.execute("SELECT name FROM todo WHERE time=? AND date=?", (current_time, current_date))
+            alarms = todo_cursor.fetchall()
+
+            print(f"Found {len(alarms)} alarms")  # debug print
+
+            for alarm in alarms:
+                print(f"Alarm for item {alarm[0]} is ringing!")  # debug print
+                pyttsx3.speak(f"Alarm for item {alarm[0]} is ringing!")
+                messagebox.showinfo("Alarm", f"Alarm for item {alarm[0]} is ringing!")
+                
+            # Close the connection when done
+            todo_cursor.close()
+            conn.close()
+
+            time.sleep(60)
 
     def create_todo_db(self):
         self.todo_cursor.execute('''CREATE TABLE IF NOT EXISTS todo
@@ -41,12 +69,10 @@ class ToDoApp:
         name = self.name_entry.get()
         date = self.date_entry.get()
         time = self.time_entry.get()
-        followup_date = self.followup_date_entry.get()  # get the new follow-up date
-        followup_time = self.followup_entry.get()  # get the new follow-up time
         alarm = self.alarm_var.get()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        if name and date and time and followup_date:
+        if name and date and time:
             if alarm:
                 section = "alarm"
             else:
@@ -58,6 +84,7 @@ class ToDoApp:
             self.update_followup_fields()  # update follow-up fields after adding an item
         else:
             messagebox.showerror("Error", "Please fill all fields")
+
 
     def remove_item(self):
         # Check if any item is selected
@@ -198,22 +225,6 @@ class ToDoApp:
         for item in alarm_items:
             self.alarm_treeview.insert("", "end", values=item)
 
-    def remind(self):
-        engine = pyttsx3.init()
-        items = self.get_all_items()
-        for item in items:
-            section, name, date, task_time, alarm, timestamp = item
-            current_date = datetime.now().strftime("%m/%d/%Y")
-            current_time = datetime.now().strftime("%H:%M")
-
-            if date == current_date and task_time == current_time and alarm:
-                engine.say(f"It's time for {name}")
-                engine.runAndWait()
-                messagebox.showinfo("Reminder", f"It's time for {name}")
-                time.sleep(3)
-
-        self.root.after(45000, self.remind)
-
     def create_widgets(self):
         self.sections = ["prospective", "inquiry", "current", "follow-up"]
         self.treeviews = {}
@@ -299,7 +310,6 @@ class ToDoApp:
             self.treeviews[section] = treeview
 
         # Create the Treeview for the Alarms section
-        # Create the Treeview for the Alarms section
         self.alarm_treeview = ttk.Treeview(self.root, height=5)
         self.treeviews['alarm'] = self.alarm_treeview
         self.alarm_treeview.grid(row=2, column=5, rowspan=len(self.sections) * 2, padx=10, sticky="nsew")
@@ -322,7 +332,7 @@ class ToDoApp:
 
         self.update_all_lists()
 
-
-root = tk.Tk()
-app = ToDoApp(root)
-root.mainloop()
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ToDoApp(root)
+    root.mainloop()
