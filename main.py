@@ -35,13 +35,14 @@ class ToDoApp:
 
     def create_operations_db(self):
         self.operations_cursor.execute('''CREATE TABLE IF NOT EXISTS operations
-                                (operation TEXT, timestamp TEXT, name TEXT, date TEXT, time TEXT)''')
+                                (operation TEXT, timestamp TEXT, name TEXT, date TEXT, time TEXT, new_date TEXT, new_time TEXT)''')
 
     def add_item(self):
         name = self.name_entry.get()
         date = self.date_entry.get()
-        followup_date = self.followup_date_entry.get()  # get the new follow-up date
         time = self.time_entry.get()
+        followup_date = self.followup_date_entry.get()  # get the new follow-up date
+        followup_time = self.followup_entry.get()  # get the new follow-up time
         alarm = self.alarm_var.get()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -51,9 +52,10 @@ class ToDoApp:
             else:
                 section = self.section_var.get()
 
-            self.insert_into_todo_db(section, name, date, time, alarm, timestamp, followup_date)  # include the new date
-            self.insert_into_operations_db("add_item", name, date, time, followup_date)  # include the new date
+            self.insert_into_todo_db(section, name, date, time, alarm, timestamp)
+            self.insert_into_operations_db("add_item", name, date, time)
             self.update_all_lists()
+            self.update_followup_fields()  # update follow-up fields after adding an item
         else:
             messagebox.showerror("Error", "Please fill all fields")
 
@@ -84,8 +86,6 @@ class ToDoApp:
 
     def move_item_up(self):
         treeviews = [self.treeviews[section] for section in self.sections]
-        new_time = self.followup_entry.get()  # get the new follow-up time
-        new_date = self.followup_date_entry.get()  # get the new follow-up date
         item_data = None
 
         for idx, treeview in enumerate(treeviews):
@@ -94,18 +94,18 @@ class ToDoApp:
                 item_data = treeview.item(selected_items[0], "values")
                 if idx > 0:  # if it's not the first treeview
                     self.update_todo_db_section(item_data[0], item_data[1], item_data[2], self.sections[idx - 1])
-                    self.insert_into_operations_db("move_item_up", item_data[0], item_data[1], item_data[2])
+                    new_date = self.followup_date_entry.get()
+                    new_time = self.followup_entry.get()
+                    self.update_todo_db_date(item_data[0], item_data[1], item_data[2], new_date)
+                    self.update_todo_db_time(item_data[0], new_date, item_data[2], new_time)
+                    self.insert_into_operations_db("move_item_up", item_data[0], item_data[1], item_data[2], new_date, new_time)
                 break  # we found our selected item, no need to continue the loop
-        
+
         if item_data is not None:
-            self.update_todo_db_date(item_data[0], item_data[1], item_data[2], new_date)  # update the date
-            self.update_todo_db_time(item_data[0], item_data[1], item_data[2], new_time)  # update the time
-        self.update_all_lists()
+            self.update_all_lists()
 
     def move_item_down(self):
         treeviews = [self.treeviews[section] for section in self.sections]
-        new_time = self.followup_entry.get()  # get the new follow-up time
-        new_date = self.followup_date_entry.get()  # get the new follow-up date
         item_data = None
 
         for idx, treeview in enumerate(treeviews):
@@ -114,13 +114,28 @@ class ToDoApp:
                 item_data = treeview.item(selected_items[0], "values")
                 if idx < len(treeviews) - 1:  # if it's not the last treeview
                     self.update_todo_db_section(item_data[0], item_data[1], item_data[2], self.sections[idx + 1])
-                    self.insert_into_operations_db("move_item_down", item_data[0], item_data[1], item_data[2])
+                    new_date = self.followup_date_entry.get()
+                    new_time = self.followup_entry.get()
+                    self.update_todo_db_date(item_data[0], item_data[1], item_data[2], new_date)
+                    self.update_todo_db_time(item_data[0], new_date, item_data[2], new_time)
+                    self.insert_into_operations_db("move_item_down", item_data[0], item_data[1], item_data[2], new_date, new_time)
                 break  # we found our selected item, no need to continue the loop
-        
+
         if item_data is not None:
-            self.update_todo_db_date(item_data[0], item_data[1], item_data[2], new_date)  # update the date
-            self.update_todo_db_time(item_data[0], item_data[1], item_data[2], new_time)  # update the time
-        self.update_all_lists()
+            self.update_all_lists()
+
+
+    def update_followup_fields(self, event=None):
+        selected_items = self.treeviews['follow-up'].selection()
+        if selected_items:  # if there are selected items
+            item_data = self.treeviews['follow-up'].item(selected_items[0], "values")
+            self.followup_entry.delete(0, tk.END)
+            self.followup_entry.insert(0, item_data[2])  # set the follow-up time
+            self.followup_date_entry.delete(0, tk.END)
+            self.followup_date_entry.insert(0, item_data[1])  # set the follow-up date
+        else:
+            self.followup_entry.delete(0, tk.END)
+            self.followup_date_entry.delete(0, tk.END)
 
     def update_todo_db_time(self, name, date, old_time, new_time):
         self.todo_cursor.execute("UPDATE todo SET time = ? WHERE name=? AND date=? AND time=?",
@@ -148,10 +163,10 @@ class ToDoApp:
                                  (section, name, date, time, alarm, timestamp))
         self.todo_conn.commit()
 
-    def insert_into_operations_db(self, operation, name=None, date=None, time=None):
+    def insert_into_operations_db(self, operation, name=None, date=None, time=None, new_date=None, new_time=None):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.operations_cursor.execute("INSERT INTO operations VALUES (?, ?, ?, ?, ?)",
-                                       (operation, timestamp, name, date, time))
+        self.operations_cursor.execute("INSERT INTO operations (operation, timestamp, name, date, time) VALUES (?, ?, ?, ?, ?)",
+                                    (operation, timestamp, name, date, time))
         self.operations_conn.commit()
 
     def get_all_items(self):
@@ -168,6 +183,7 @@ class ToDoApp:
             self.update_treeview(treeview, section.capitalize())
 
         self.update_alarm_list()
+        self.update_followup_fields()  # update follow-up fields after updating the lists
 
     def update_treeview(self, treeview, section):
         for item in treeview.get_children():
